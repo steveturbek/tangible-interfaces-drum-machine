@@ -34,6 +34,7 @@ basic.pause(1000); // --- Setup ---
 basic.showIcon(IconNames.Chessboard);
 rotaryEncoderPlus.connectEncoder2(); //Uses CLK=P8 DT=P9 SW=P13
 rotaryEncoderPlus.connectEncoder3(); //Uses CLK=P14 DT=P15 SW=P16
+basic.clearScreen();
 
 serial.redirectToUSB();
 serial.writeLine("START DrumMachine");
@@ -55,12 +56,12 @@ let smoothTempo = pins.analogReadPin(AnalogPin.P2);
 
 let lastHeartbeatTime = input.runningTime();
 
-// ── Main loop: read the three analog pots ────────────────────────────────────
 basic.forever(function () {
   let now = input.runningTime();
 
-  step = Math.round((pins.analogReadPin(AnalogPin.P0) / 1023) * 15);
-  track = Math.round((pins.analogReadPin(AnalogPin.P1) / 1023) * 7);
+  // ── Main loop: read the three analog pots ────────────────────────────────────
+  step = Math.max(0, Math.min(15, Math.round(((pins.analogReadPin(AnalogPin.P0) - 100) * 15) / 823))); // subtract more than 100 to push step 0 lower, or reduce 823 if step 15 is unreachable at the top.
+  track = Math.max(0, Math.min(7, Math.round(((pins.analogReadPin(AnalogPin.P1) - 100) * 7) / 823))); //  subtract more than 100 to push step 0 lower, or reduce 823 if step 15 is unreachable at the top.
   smoothTempo = Math.round(smoothTempo * 0.8 + pins.analogReadPin(AnalogPin.P2) * 0.2);
   tempo = 60 + Math.round((smoothTempo / 1023) * 120);
 
@@ -118,4 +119,9 @@ rotaryEncoderPlus.onEvent(rotaryEncoderPlus.EncoderID.E3, rotaryEncoderPlus.Enco
 input.onButtonPressed(Button.A, function () {
   isPlaying = 1 - isPlaying;
   serial.writeLine("play:" + isPlaying);
+  if (isPlaying) {
+    basic.showIcon(IconNames.EighthNote); // ▶ play
+  } else {
+    basic.showIcon(IconNames.No);
+  }
 });

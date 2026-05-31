@@ -359,6 +359,7 @@
   function setTempo(bpm) {
     state.tempo = bpm;
     document.getElementById('tempo-val').textContent = bpm;
+    updateURL();
     // No restart — the next scheduleNext call reads stepMs() fresh
   }
 
@@ -438,6 +439,7 @@
     state.grid[t][s] = !state.grid[t][s];
     const cell = document.getElementById(`c-${t}-${s}`);
     if (cell) cell.classList.toggle('hit', state.grid[t][s]);
+    updateURL();
   }
 
   function renderCursor() {
@@ -485,6 +487,7 @@
       state.trackSamples[state.cursorTrack] = Math.max(0, Math.min(SAMPLES.length - 1, val));
       updateTrackLabel(state.cursorTrack);
       updateTrackInfo();
+      updateURL();
     }
     else if (key === 'toggle') { toggleCell(state.cursorTrack, state.cursorStep); }
     else if (key === 'mute') {
@@ -492,12 +495,14 @@
       state.muted[t] = !state.muted[t];
       document.getElementById('row-' + t).classList.toggle('muted', state.muted[t]);
       updateTrackInfo();
+      updateURL();
     }
     else if (key === 'sampleGroup') { jumpToNextGroup(state.cursorTrack); }
     else if (key === 'jog') {
       const cur = state.jogOffsets[state.cursorTrack][state.cursorStep];
       state.jogOffsets[state.cursorTrack][state.cursorStep] = Math.max(-100, Math.min(100, cur + val * 10));
       updateTrackInfo();
+      updateURL();
     }
     else if (key === 'play') { val ? startSequencer() : stopSequencer(); }
   }
@@ -509,6 +514,7 @@
     state.trackSamples[trackIdx] = GROUP_STARTS[nextGroupIdx];
     updateTrackLabel(trackIdx);
     updateTrackInfo();
+    updateURL();
   }
 
   function applyFullState(line) {
@@ -595,6 +601,37 @@
     });
   }
 
+  // ── URL state ────────────────────────────────────────────────────────────────
+  function serializeState() {
+    const data = {
+      g: state.grid.map(row => row.map(v => v ? 1 : 0).join('')),
+      s: state.trackSamples.slice(),
+      t: state.tempo,
+      m: state.muted.map(v => v ? 1 : 0),
+      j: state.jogOffsets,
+    };
+    return btoa(JSON.stringify(data)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+  }
+
+  function deserializeState(encoded) {
+    try {
+      const data = JSON.parse(atob(encoded.replace(/-/g, '+').replace(/_/g, '/')));
+      if (data.g) data.g.forEach((row, t) => row.split('').forEach((v, s) => { state.grid[t][s] = v === '1'; }));
+      if (data.s) data.s.forEach((idx, t) => { state.trackSamples[t] = Math.max(0, Math.min(SAMPLES.length - 1, idx)); });
+      if (data.t) state.tempo = Math.max(60, Math.min(180, data.t));
+      if (data.m) data.m.forEach((v, t) => { state.muted[t] = v === 1; });
+      if (data.j) data.j.forEach((row, t) => row.forEach((v, s) => { state.jogOffsets[t][s] = v; }));
+    } catch(e) { /* ignore malformed querystring */ }
+  }
+
+  let updateURLTimer = null;
+  function updateURL() {
+    clearTimeout(updateURLTimer);
+    updateURLTimer = setTimeout(() => {
+      history.replaceState(null, '', '?q=' + serializeState());
+    }, 400);
+  }
+
   // ── UI wiring ─────────────────────────────────────────────────────────────────
   document.getElementById('connect-btn').addEventListener('click', connectSerial);
   document.getElementById('usb-btn').addEventListener('click', connectSerial);
@@ -604,13 +641,19 @@
   document.getElementById('clear-btn').addEventListener('click', () => {
     state.grid.forEach(row => row.fill(false));
     document.querySelectorAll('.cell.hit').forEach(c => c.classList.remove('hit'));
+    updateURL();
   });
 
   // ── Init ──────────────────────────────────────────────────────────────────────
+  const _params = new URLSearchParams(location.search);
+  if (_params.has('q')) deserializeState(_params.get('q'));
+
   buildGrid();
+  document.getElementById('tempo-val').textContent = state.tempo;
+  state.muted.forEach((m, t) => { if (m) document.getElementById('row-' + t).classList.add('muted'); });
   renderCursor();
 
-  if (new URLSearchParams(location.search).has('test')) initTestMode();
+  if (_params.has('test')) initTestMode();
   </script>
 </body>
 </html>
