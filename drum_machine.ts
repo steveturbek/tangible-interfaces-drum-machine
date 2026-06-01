@@ -60,8 +60,8 @@ basic.forever(function () {
   let now = input.runningTime();
 
   // ── Main loop: read the three analog pots ────────────────────────────────────
-  step = Math.max(0, Math.min(15, Math.round(((pins.analogReadPin(AnalogPin.P0) - 100) * 15) / 823))); // subtract more than 100 to push step 0 lower, or reduce 823 if step 15 is unreachable at the top.
-  track = Math.max(0, Math.min(7, Math.round(((pins.analogReadPin(AnalogPin.P1) - 100) * 7) / 823))); //  subtract more than 100 to push step 0 lower, or reduce 823 if step 15 is unreachable at the top.
+  step = 15 - Math.max(0, Math.min(15, Math.round(((pins.analogReadPin(AnalogPin.P0) - 100) * 15) / 823)));
+  track = 7 - Math.max(0, Math.min(7, Math.round(((pins.analogReadPin(AnalogPin.P1) - 100) * 7) / 823)));
   smoothTempo = Math.round(smoothTempo * 0.8 + pins.analogReadPin(AnalogPin.P2) * 0.2);
   tempo = 60 + Math.round((smoothTempo / 1023) * 120);
 
@@ -108,11 +108,11 @@ rotaryEncoderPlus.onEvent(rotaryEncoderPlus.EncoderID.E3, rotaryEncoderPlus.Enco
 });
 
 rotaryEncoderPlus.onEvent(rotaryEncoderPlus.EncoderID.E3, rotaryEncoderPlus.EncoderEvent.CounterClockwise, function () {
-  serial.writeLine("jog:-1");
+  serial.writeLine("jog:1");
 });
 
 rotaryEncoderPlus.onEvent(rotaryEncoderPlus.EncoderID.E3, rotaryEncoderPlus.EncoderEvent.ButtonPress, function () {
-  serial.writeLine("toggle:1");
+  serial.writeLine("toggle:-1");
 });
 
 // ── Play/pause button (Pin 5 = Button A) ─────────────────────────────────────

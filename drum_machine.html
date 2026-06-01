@@ -41,6 +41,34 @@
     .header-controls { margin-left: auto; display: flex; gap: 8px; align-items: center; }
     #status-row { width: 100%; max-width: 960px; display: flex; justify-content: space-between; align-items: baseline; margin-top: 10px; min-height: 1.2em; }
     #track-info { font-size: 0.78em; color: #555; padding-left: 2px; }
+    #sample-table {
+      width: 100%; max-width: 960px;
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 4px;
+      margin-top: 20px;
+    }
+    .sample-col-header {
+      padding: 3px 6px 4px;
+      font-size: 0.68em;
+      font-weight: 700;
+      color: rgba(0,0,0,0.65);
+      border-radius: 2px 2px 0 0;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+    }
+    .sample-item {
+      padding: 2px 6px;
+      font-size: 0.68em;
+      color: #444;
+      cursor: pointer;
+      border-radius: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .sample-item:hover { color: #bbb; background: #1e1e1e; }
+    .sample-item.active { font-weight: 600; }
     #credits { font-size: 0.72em; color: #444; white-space: nowrap; }
     #credits a { color: #444; text-decoration: none; }
     #credits a:hover { color: #666; text-decoration: underline; }
@@ -181,6 +209,7 @@
   </header>
 
   <div class="drum-grid" id="grid"></div>
+  <div id="sample-table"></div>
   <div id="status-row">
     <div id="track-info"></div>
     <div id="credits">Samples: <a href="https://freesound.org/people/1LOVE/packs/35238/" target="_blank">Orange Vintage Drum Kit by 1LOVE</a> via Freesound (CC)</div>
@@ -453,6 +482,7 @@
     if (row) row.classList.add('cursor-track');
 
     updateTrackInfo();
+    renderSampleTable();
   }
 
   function renderPlayhead() {
@@ -466,6 +496,40 @@
   function updateTrackLabel(t) {
     const label = document.getElementById('label-' + t);
     if (label) setLabelText(label, t);
+    renderSampleTable();
+  }
+
+  function buildSampleTable() {
+    const container = document.getElementById('sample-table');
+    container.innerHTML = '';
+    GROUPS.forEach((group, gi) => {
+      const col = document.createElement('div');
+      const header = document.createElement('div');
+      header.className = 'sample-col-header';
+      header.textContent = group;
+      header.style.background = TRACK_COLORS[gi];
+      col.appendChild(header);
+      SAMPLES.forEach((s, i) => {
+        if (s.g !== group) return;
+        const item = document.createElement('div');
+        item.className = 'sample-item';
+        item.textContent = s.n;
+        item.dataset.idx = i;
+        item.addEventListener('click', () => applyControl('sample', String(i)));
+        col.appendChild(item);
+      });
+      container.appendChild(col);
+    });
+  }
+
+  function renderSampleTable() {
+    const activeSampleIdx = state.trackSamples[state.cursorTrack];
+    const color = TRACK_COLORS[state.cursorTrack];
+    document.querySelectorAll('.sample-item').forEach(el => {
+      const active = parseInt(el.dataset.idx) === activeSampleIdx;
+      el.classList.toggle('active', active);
+      el.style.color = active ? color : '';
+    });
   }
 
   function updateTrackInfo() {
@@ -649,6 +713,7 @@
   if (_params.has('q')) deserializeState(_params.get('q'));
 
   buildGrid();
+  buildSampleTable();
   document.getElementById('tempo-val').textContent = state.tempo;
   state.muted.forEach((m, t) => { if (m) document.getElementById('row-' + t).classList.add('muted'); });
   renderCursor();
