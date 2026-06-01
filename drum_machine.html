@@ -595,6 +595,29 @@
   // ── Web Serial ────────────────────────────────────────────────────────────────
   let serialBuffer = '';
 
+  async function openAndRead(port) {
+    await port.open({ baudRate: 115200 });
+    document.getElementById('overlay').classList.add('hidden');
+    loadAllSamples();
+
+    navigator.serial.addEventListener('disconnect', e => {
+      if (e.port === port) stopSequencer();
+    });
+
+    const decoder = new TextDecoderStream();
+    port.readable.pipeTo(decoder.writable).catch(() => {});
+    const reader = decoder.readable.getReader();
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      serialBuffer += value;
+      const lines = serialBuffer.split('\n');
+      serialBuffer = lines.pop();
+      lines.forEach(parseLine);
+    }
+  }
+
   async function connectSerial() {
     const statusEl = document.getElementById('ov-status');
     if (!('serial' in navigator)) {
@@ -604,31 +627,22 @@
     try {
       statusEl.textContent = 'Opening port selection…';
       const port = await navigator.serial.requestPort();
-      await port.open({ baudRate: 115200 });
-
-      document.getElementById('overlay').classList.add('hidden');
-      loadAllSamples();
-
-      navigator.serial.addEventListener('disconnect', e => {
-        if (e.port === port) stopSequencer();
-      });
-
-      const decoder = new TextDecoderStream();
-      port.readable.pipeTo(decoder.writable).catch(() => {});
-      const reader = decoder.readable.getReader();
-
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        serialBuffer += value;
-        const lines = serialBuffer.split('\n');
-        serialBuffer = lines.pop();
-        lines.forEach(parseLine);
-      }
+      await openAndRead(port);
     } catch(err) {
       if (err.name !== 'NotFoundError') {
-        document.getElementById('ov-status').textContent = 'Error: ' + err.message;
+        statusEl.textContent = 'Error: ' + err.message;
       }
+    }
+  }
+
+  async function autoConnectSerial() {
+    if (!('serial' in navigator)) return;
+    try {
+      const ports = await navigator.serial.getPorts();
+      if (ports.length === 0) return;
+      await openAndRead(ports[0]);
+    } catch(err) {
+      // silent — overlay stays for manual connect
     }
   }
 
@@ -719,6 +733,7 @@
   renderCursor();
 
   if (_params.has('test')) initTestMode();
+  else autoConnectSerial();
   </script>
 </body>
 </html>
