@@ -15,9 +15,29 @@ The project has two parts: a microbit microcontroller and a web page.
 
 The physical controls — sliders, knobs, and a button — connect to the microbit. The microbit reads the control inputs and sends them over a USB serial connection to the web page. The web page displays the drum grid, plays the audio samples, and updates in real time as you turn knobs and move sliders.
 
+# Drum Machine Web Page
+
+[https://turbek.com/tangible-interfaces-drum-machine/drum_machine.html](https://turbek.com/tangible-interfaces-drum-machine/drum_machine.html)
+
+The web page shows a 16-step by 8-track grid. Each row is one instrument track, and each column is one step in the rhythmic loop. Clicking a cell toggles whether that instrument plays on that step.
+
+The tracks are split into two groups of four, with a horizontal divider between them. Each track label on the left shows the name of its current sample. A default loop is loaded when the page opens, with at least four active tracks.
+
+Audio samples come from the [1LOVE Vintage Drum Kit](https://freesound.org/people/1LOVE/packs/35238/) on Freesound.org, which is released under a public domain license.
+
 <video src="images/drum_machine.mp4" controls width="100%"></video>
 
 ![Drum machine web page](images/drum_machine_screenshot.png)
+
+# Microbit Program
+
+The microbit program reads the sliders, knobs, and button, then sends the values as structured messages to the web page over USB serial.
+
+[View the microbit program source](drum_machine.ts)
+
+<!-- tangible-interfaces-project-drum-machine -->
+
+[Open in MakeCode editor](https://makecode.microbit.org/S05362-83625-16605-93381)
 
 # Hardware
 
@@ -49,25 +69,3 @@ Taping everything to a piece of cardboard gives the controls a fixed position, m
 Mounting the controls in a small box creates something that feels like a finished instrument.
 
 ![Drum machine controller in a box](images/drum_machine_prototype_box.jpeg)
-
-# Microbit Program
-
-The microbit program reads the sliders, knobs, and button, then sends the values as structured messages to the web page over USB serial.
-
-[View the microbit program source](drum_machine.ts)
-
-<!-- tangible-interfaces-project-drum-machine -->
-
-[Open in MakeCode editor](https://makecode.microbit.org/S05362-83625-16605-93381){:target="\_blank"}
-
-# Web Page
-
-[Open the drum machine](drum_machine.html){:target="\_blank"}
-
-The web page shows a 16-step by 8-track grid. Each row is one instrument track, and each column is one step in the rhythmic loop. Clicking a cell toggles whether that instrument plays on that step.
-
-The tracks are split into two groups of four, with a horizontal divider between them. Each track label on the left shows the name of its current sample. A default loop is loaded when the page opens, with at least four active tracks.
-
-Audio samples come from the [1LOVE Vintage Drum Kit](https://freesound.org/people/1LOVE/packs/35238/) on Freesound.org, which is released under a public domain license.
-
-A **Clear** button resets the grid so you can start a new pattern from scratch.
