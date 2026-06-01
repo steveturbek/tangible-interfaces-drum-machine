@@ -1,5 +1,6 @@
 ---
 layout: default
+permalink: /
 ---
 
 # Tangible Interfaces Drum Machine
