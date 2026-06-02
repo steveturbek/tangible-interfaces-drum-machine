@@ -41,6 +41,8 @@ The microbit program reads the sliders, knobs, and button, then sends the values
 
 # Hardware
 
+The hardware uses the microbit and several sensors to make the drum machine controller , but no complex engineering.
+
 - Microbit v2
 - Microbit breakout board (speeds up prototyping by making pins easy to wire)
 - Sliding potentiometer — **step**: selects the current step on the timeline
@@ -51,6 +53,8 @@ The microbit program reads the sliders, knobs, and button, then sends the values
 - Button: play / pause
 - Jumper wires with socket ends
 - USB cable
+
+![This wiring diagram shows how the components are wired. Note that power and ground wires are omitted for readability.](images/drum_machine_schematic.png "Drum machine controller wiring diagram")
 
 ## Prototype 1: Loose wires
 
