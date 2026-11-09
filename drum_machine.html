@@ -414,7 +414,7 @@
       // ── State ────────────────────────────────────────────────────────────────────
       const state = {
         grid: Array.from({ length: 8 }, () => new Array(16).fill(false)),
-        trackSamples: [18, 0, 29, 32, 47, 10, 44, 61], // Boom Kick, Cha-cha, Destiny Hat, 22-Feet Open, Jurra 808, Oscar, Sweet Clap, Bongo 1
+        trackSamples: [18, 0, 29, 32, 47, 10, 44, 61], // Boom Kick, Cha-cha, Destiny Hat, 22-Feet Open, Jurra 808, Oscar, Elvis Clap, Bongo 1
         jogOffsets: Array.from({ length: 8 }, () => new Array(16).fill(0)), // ms per step
         muted: [false, false, true, false, false, false, false, false],
         tempo: 120,
@@ -432,7 +432,7 @@
         [], // 22-Feet Open Hat
         [8], // Jurra 808
         [], // Oscar Snare
-        [14, 15], // Sweet Clap
+        [14, 15], // Elvis Clap
         [], // Bongo 1
       ].forEach((steps, t) => {
         steps.forEach((s) => {
@@ -446,6 +446,7 @@
       const audioPools = [];
 
       function loadAllSamples() {
+        if (audioPools.length) return; // already loaded
         SAMPLES.forEach((s, i) => {
           audioPools[i] = {
             voices: Array.from({ length: POOL_SIZE }, () => {
@@ -473,36 +474,41 @@
       // ── Sequencer ────────────────────────────────────────────────────────────────
       // seqOriginTime advances by one stepMs() after each step fires, so tempo
       // changes take effect naturally on the next step — no restart needed.
+      // Each step is scheduled JOG_MAX_MS early so a negative jog can play
+      // its sound ahead of the beat.
+      const JOG_MAX_MS = 100;
       let seqTimer = null;
-      let seqOriginTime = 0; // absolute time when the next step should fire
+      let seqOriginTime = 0; // absolute time when the next step should be heard
       let seqStep = 0;
 
       function stepMs() {
         return 60000 / state.tempo / 4;
       }
 
-      function fireStep(step) {
-        state.playhead = step;
+      function scheduleNext() {
+        const step = seqStep;
+        const beatTime = seqOriginTime;
+        const now = performance.now();
         for (let t = 0; t < 8; t++) {
           if (state.grid[t][step] && !state.muted[t]) {
-            playSound(state.trackSamples[t], Math.max(0, state.jogOffsets[t][step]));
+            playSound(state.trackSamples[t], Math.max(0, beatTime + state.jogOffsets[t][step] - now));
           }
         }
-        renderPlayhead();
-      }
+        setTimeout(() => {
+          state.playhead = step;
+          renderPlayhead();
+        }, Math.max(0, beatTime - now));
 
-      function scheduleNext() {
-        fireStep(seqStep);
         seqStep = (seqStep + 1) % 16;
         seqOriginTime += stepMs(); // advance by current step duration — picks up tempo changes here
-        seqTimer = setTimeout(scheduleNext, Math.max(0, seqOriginTime - performance.now()));
+        seqTimer = setTimeout(scheduleNext, Math.max(0, seqOriginTime - JOG_MAX_MS - performance.now()));
       }
 
       function startSequencer() {
         if (seqTimer) return;
         state.isPlaying = true;
-        seqStep = 0;
-        seqOriginTime = performance.now();
+        // seqStep is kept, so playing again resumes where it paused
+        seqOriginTime = performance.now() + JOG_MAX_MS;
         scheduleNext();
         document.getElementById("play-btn").textContent = "⏸ Pause";
         document.getElementById("play-btn").classList.add("playing");
@@ -650,7 +656,7 @@
             item.className = "sample-item";
             item.textContent = s.n;
             item.dataset.idx = i;
-            item.addEventListener("click", () => applyControl("sample", String(i)));
+            item.addEventListener("click", () => setTrackSample(i));
             col.appendChild(item);
           });
           container.appendChild(col);
@@ -687,10 +693,8 @@
         } else if (key === "tempo") {
           setTempo(Math.max(60, Math.min(180, val)));
         } else if (key === "sample") {
-          state.trackSamples[state.cursorTrack] = Math.max(0, Math.min(SAMPLES.length - 1, val));
-          updateTrackLabel(state.cursorTrack);
-          updateTrackInfo();
-          updateURL();
+          // relative: +1 / -1 from the current track's sample
+          setTrackSample(state.trackSamples[state.cursorTrack] + val);
         } else if (key === "toggle") {
           toggleCell(state.cursorTrack, state.cursorStep);
         } else if (key === "mute") {
@@ -707,8 +711,17 @@
           updateTrackInfo();
           updateURL();
         } else if (key === "play") {
-          val ? startSequencer() : stopSequencer();
+          if (rawVal === "toggle") state.isPlaying ? stopSequencer() : startSequencer();
+          else val ? startSequencer() : stopSequencer();
         }
+      }
+
+      function setTrackSample(idx) {
+        if (Number.isNaN(idx)) return;
+        state.trackSamples[state.cursorTrack] = Math.max(0, Math.min(SAMPLES.length - 1, idx));
+        updateTrackLabel(state.cursorTrack);
+        updateTrackInfo();
+        updateURL();
       }
 
       function jumpToNextGroup(trackIdx) {
@@ -730,34 +743,57 @@
             if (colon < 0) return;
             const k = part.slice(0, colon);
             const v = part.slice(colon + 1);
-            if (k === "sample") return; // skip — only delta encoder turns update per-track samples
+            // sample and play are owned by the page, so never take them from the
+            // heartbeat (older micro:bit code still sends them)
+            if (k === "sample" || k === "play") return;
             applyControl(k, v);
           });
       }
 
       // ── Web Serial ────────────────────────────────────────────────────────────────
       let serialBuffer = "";
+      let activePort = null; // the port we're reading from
+      let knownPort = null; // a previously allowed port, ready to open on click
+
+      function showOverlay(message) {
+        document.getElementById("overlay").classList.remove("hidden");
+        document.getElementById("ov-status").textContent = message;
+      }
+
+      function setKnownPort(port) {
+        knownPort = port;
+        document.getElementById("connect-btn").textContent = port ? "Start" : "Connect micro:bit";
+        if (port) document.getElementById("ov-status").textContent = "micro:bit found — click Start.";
+      }
 
       async function openAndRead(port) {
+        if (activePort) return; // already connected
         await port.open({ baudRate: 115200 });
+        activePort = port;
+        serialBuffer = "";
         document.getElementById("overlay").classList.add("hidden");
         loadAllSamples();
 
-        navigator.serial.addEventListener("disconnect", (e) => {
-          if (e.port === port) stopSequencer();
-        });
-
         const decoder = new TextDecoderStream();
-        port.readable.pipeTo(decoder.writable).catch(() => {});
+        const pipeDone = port.readable.pipeTo(decoder.writable).catch(() => {});
         const reader = decoder.readable.getReader();
 
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          serialBuffer += value;
-          const lines = serialBuffer.split("\n");
-          serialBuffer = lines.pop();
-          lines.forEach(parseLine);
+        try {
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            serialBuffer += value;
+            const lines = serialBuffer.split("\n");
+            serialBuffer = lines.pop();
+            lines.forEach(parseLine);
+          }
+        } catch (err) {
+          // read fails when the micro:bit is unplugged — handled by the disconnect event
+        } finally {
+          reader.releaseLock();
+          await pipeDone;
+          await port.close().catch(() => {});
+          activePort = null;
         }
       }
 
@@ -767,26 +803,42 @@
           statusEl.textContent = "Web Serial not supported — use Chrome or Edge.";
           return;
         }
+        if (activePort) return;
         try {
-          statusEl.textContent = "Opening port selection…";
-          const port = await navigator.serial.requestPort();
+          let port = knownPort;
+          if (!port) {
+            statusEl.textContent = "Opening port selection…";
+            port = await navigator.serial.requestPort();
+          }
+          setKnownPort(null);
           await openAndRead(port);
         } catch (err) {
           if (err.name !== "NotFoundError") {
-            statusEl.textContent = "Error: " + err.message;
+            showOverlay("Error: " + err.message);
           }
         }
       }
 
-      async function autoConnectSerial() {
+      // Browsers block sound until the person clicks the page, so a micro:bit
+      // that was allowed before isn't opened automatically. Instead the
+      // Connect button becomes "Start", and that click unlocks audio.
+      async function findKnownPort() {
         if (!("serial" in navigator)) return;
-        try {
-          const ports = await navigator.serial.getPorts();
-          if (ports.length === 0) return;
-          await openAndRead(ports[0]);
-        } catch (err) {
-          // silent — overlay stays for manual connect
-        }
+        const ports = await navigator.serial.getPorts().catch(() => []);
+        if (ports.length && !activePort) setKnownPort(ports[0]);
+      }
+
+      if ("serial" in navigator) {
+        // These events fire on the port (event.target) and bubble up to navigator.serial
+        navigator.serial.addEventListener("disconnect", (e) => {
+          if (e.target !== activePort) return;
+          stopSequencer();
+          setKnownPort(null);
+          showOverlay("micro:bit disconnected — plug it back in to continue.");
+        });
+        navigator.serial.addEventListener("connect", (e) => {
+          if (!activePort) setKnownPort(e.target);
+        });
       }
 
       function parseLine(line) {
@@ -801,13 +853,20 @@
       }
 
       // ── Test mode (?test — keyboard controls) ────────────────────────────────────
+      let testModeReady = false;
       function initTestMode() {
         document.getElementById("overlay").classList.add("hidden");
         loadAllSamples();
+        if (testModeReady) return; // keyboard already wired up
+        testModeReady = true;
         document.addEventListener("keydown", (e) => {
           if (e.target.tagName === "INPUT") return;
-          if (e.key === " ") {
+          if (e.key === " " || e.key === "Enter") {
+            // stop a focused button (e.g. Clear) from also being clicked
             e.preventDefault();
+            if (e.target.tagName === "BUTTON") e.target.blur();
+          }
+          if (e.key === " ") {
             state.isPlaying ? stopSequencer() : startSequencer();
           } else if (e.key === "ArrowRight") applyControl("step", Math.min(15, state.cursorStep + 1));
           else if (e.key === "ArrowLeft") applyControl("step", Math.max(0, state.cursorStep - 1));
@@ -817,8 +876,8 @@
           else if (e.key === "+" || e.key === "=") setTempo(Math.min(180, state.tempo + 5));
           else if (e.key === "-") setTempo(Math.max(60, state.tempo - 5));
           else if (e.key === "n") jumpToNextGroup(state.cursorTrack);
-          else if (e.key === "N") applyControl("sample", Math.max(0, state.trackSamples[state.cursorTrack] - 1));
-          else if (e.key === "m") applyControl("sample", Math.min(SAMPLES.length - 1, state.trackSamples[state.cursorTrack] + 1));
+          else if (e.key === "N") applyControl("sample", "-1");
+          else if (e.key === "m") applyControl("sample", "1");
           else if (e.key === ",") applyControl("jog", "-1");
           else if (e.key === ".") applyControl("jog", "1");
         });
@@ -857,7 +916,7 @@
           if (data.j)
             data.j.forEach((row, t) =>
               row.forEach((v, s) => {
-                state.jogOffsets[t][s] = v;
+                state.jogOffsets[t][s] = Math.max(-JOG_MAX_MS, Math.min(JOG_MAX_MS, Number(v) || 0));
               }),
             );
         } catch (e) {
@@ -899,7 +958,7 @@
       renderCursor();
 
       if (_params.has("test")) initTestMode();
-      else autoConnectSerial();
+      else findKnownPort();
     </script>
   </body>
 </html>

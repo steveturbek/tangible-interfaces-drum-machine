@@ -19,15 +19,19 @@ Serial protocol — lines ending with \n, sent to Chrome/Edge via USB:
     step:N        current step 0–15
     track:N       current track 0–7
     tempo:N       BPM 60–180
-    sample:N      sample index 0–61 (absolute, encoder turn)
+    sample:1      next sample on the current track (encoder turn)
+    sample:-1     previous sample on the current track
     mute:1        encoder 2 button pressed — toggle mute on current track
     jog:1         jog forward one unit
     jog:-1        jog back one unit
     toggle:1      encoder 3 button pressed — toggle hit at current step/track
-    play:N        0 = paused, 1 = playing
+    play:toggle   button A pressed — flip between playing and paused
 
   Full state heartbeat (every 1 second, # prefix):
-    #step:N,track:N,tempo:N,sample:N,play:N
+    #step:N,track:N,tempo:N
+
+  Sample and play are relative, so the web page owns that state. This lets
+  the on-screen buttons and the micro:bit controls work together.
 */
 
 basic.pause(1000); // --- Setup ---
@@ -43,8 +47,6 @@ serial.writeLine("START DrumMachine");
 let step = 0;
 let track = 0;
 let tempo = 120;
-let sampleIndex = 0; // 0–61, JS maps to grouped samples
-let isPlaying = 0;
 
 // Previous values for delta detection
 let prevStep = -1;
@@ -81,7 +83,7 @@ basic.forever(function () {
   // Full state heartbeat every 1 second
   if (now - lastHeartbeatTime >= 1000) {
     lastHeartbeatTime = now;
-    serial.writeLine("#step:" + step + ",track:" + track + ",tempo:" + tempo + ",sample:" + sampleIndex + ",play:" + isPlaying);
+    serial.writeLine("#step:" + step + ",track:" + track + ",tempo:" + tempo);
   }
 
   basic.pause(50);
@@ -89,13 +91,11 @@ basic.forever(function () {
 
 // ── Encoder 2: sample selector ───────────────────────────────────────────────
 rotaryEncoderPlus.onEvent(rotaryEncoderPlus.EncoderID.E2, rotaryEncoderPlus.EncoderEvent.Clockwise, function () {
-  sampleIndex = Math.min(61, sampleIndex + 1);
-  serial.writeLine("sample:" + sampleIndex);
+  serial.writeLine("sample:1");
 });
 
 rotaryEncoderPlus.onEvent(rotaryEncoderPlus.EncoderID.E2, rotaryEncoderPlus.EncoderEvent.CounterClockwise, function () {
-  sampleIndex = Math.max(0, sampleIndex - 1);
-  serial.writeLine("sample:" + sampleIndex);
+  serial.writeLine("sample:-1");
 });
 
 rotaryEncoderPlus.onEvent(rotaryEncoderPlus.EncoderID.E2, rotaryEncoderPlus.EncoderEvent.ButtonPress, function () {
@@ -108,20 +108,18 @@ rotaryEncoderPlus.onEvent(rotaryEncoderPlus.EncoderID.E3, rotaryEncoderPlus.Enco
 });
 
 rotaryEncoderPlus.onEvent(rotaryEncoderPlus.EncoderID.E3, rotaryEncoderPlus.EncoderEvent.CounterClockwise, function () {
-  serial.writeLine("jog:1");
+  serial.writeLine("jog:-1");
 });
 
 rotaryEncoderPlus.onEvent(rotaryEncoderPlus.EncoderID.E3, rotaryEncoderPlus.EncoderEvent.ButtonPress, function () {
-  serial.writeLine("toggle:-1");
+  serial.writeLine("toggle:1");
 });
 
 // ── Play/pause button (Pin 5 = Button A) ─────────────────────────────────────
+// The page decides whether this means play or pause, since the on-screen
+// Play button can change it too. Flash a note to confirm the press.
 input.onButtonPressed(Button.A, function () {
-  isPlaying = 1 - isPlaying;
-  serial.writeLine("play:" + isPlaying);
-  if (isPlaying) {
-    basic.showIcon(IconNames.EighthNote); // ▶ play
-  } else {
-    basic.showIcon(IconNames.No);
-  }
+  serial.writeLine("play:toggle");
+  basic.showIcon(IconNames.EighthNote);
+  basic.clearScreen();
 });
